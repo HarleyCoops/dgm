@@ -48,6 +48,16 @@ sudo apt-get install graphviz graphviz-dev
 pip install -r requirements_dev.txt
 ```
 
+> **If you're on Windows Subsystem for Linux (WSL)**, first install Python venv support and create a virtual environment:
+>
+> ```bash
+> sudo apt update
+> sudo apt install python3-venv
+> python3 -m venv .venv
+> source .venv/bin/activate
+> pip install --upgrade pip
+> ```
+
 ```bash
 # Clone SWE-bench
 cd swe_bench
@@ -79,6 +89,103 @@ By default, outputs will be saved in the `output_dgm/` directory.
 - `tools/` tools available to the foundation models
 - `coding_agent.py` main implementation of the initial coding agent
 - `DGM_outer.py` entry point for running the DGM algorithm
+
+## Defining Custom Agents and Tasks
+
+The DGM framework is extensible and allows you to define your own agents and tasks. Here's how:
+
+### Creating Custom Tasks
+
+1. **Simple Task List**: Create a JSON file with task IDs:
+```json
+// custom_tasks/subsets/small.json
+[
+    "task-001",
+    "task-002",
+    "task-003"
+]
+```
+
+2. **Full Task Dataset**: Create a dataset loader with detailed task structure:
+```python
+# custom_tasks/dataset.py
+def load_custom_dataset():
+    return [
+        {
+            "instance_id": "task-001",
+            "problem_statement": "Write a function that sorts a list",
+            "base_commit": "initial",
+            "test_patch": "def test_sort():\n    assert sort([3,1,2]) == [1,2,3]",
+            "patch": "def sort(lst):\n    return sorted(lst)"  # Optional gold solution
+        }
+    ]
+```
+
+### Creating Custom Agents
+
+**Option A - Extend Existing Agent**:
+```python
+# my_custom_agent.py
+from coding_agent import AgenticSystem
+
+class CustomAgenticSystem(AgenticSystem):
+    def forward(self):
+        """Override with custom problem-solving logic"""
+        instruction = f"""
+        Custom instructions for: {self.problem_statement}
+        Use specialized techniques...
+        """
+        from llm_withtools import chat_with_agent
+        return chat_with_agent(instruction, model=self.code_model, 
+                              msg_history=[], logging=safe_log)
+```
+
+**Option B - New Agent Architecture**:
+```python
+class AlternativeAgent:
+    def __init__(self, problem_statement, git_tempdir, **kwargs):
+        self.problem_statement = problem_statement
+        self.git_tempdir = git_tempdir
+    
+    def solve(self):
+        # Implement custom solving strategy
+        pass
+```
+
+### Integration Steps
+
+1. **Create evaluation harness** in `custom_tasks/harness.py`
+2. **Modify DGM_outer.py** to load your dataset:
+```python
+if args.custom_tasks:
+    from custom_tasks.dataset import load_custom_dataset
+    dataset = load_custom_dataset()
+```
+
+3. **Run with custom setup**:
+```bash
+python DGM_outer.py --custom_tasks --agent_type custom
+```
+
+### Example: Math Problem Solver
+
+```python
+# math_tasks/dataset.py
+def load_math_dataset():
+    return [{
+        "instance_id": "math-001",
+        "problem_statement": "Solve: 2x + 5 = 13",
+        "test_patch": "assert solve_equation('2x + 5 = 13') == 4"
+    }]
+
+# math_agent.py  
+class MathAgent(AgenticSystem):
+    def forward(self):
+        instruction = f"Solve step by step: {self.problem_statement}"
+        # Agent solves math problems...
+```
+
+For detailed implementation examples and safety considerations, see the source code and inline documentation.
 
 ## Logs from Experiments
 This [google drive folder](https://drive.google.com/drive/folders/1Kcu9TbIa9Z50pJ7S6hH9omzzD1pxIYZC?usp=sharing) contains all the foundation model output logs from the experiments shown in the paper.
